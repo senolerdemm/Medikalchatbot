@@ -1,0 +1,78 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# ===== Flutter / Dart =====
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+.packages
+.pub-cache/
+.pub/
+/build/
+frontend/.dart_tool/
+frontend/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# ===== Project Specific =====
+# Vector DB store (too large for git)
+chroma_store/
+*.faiss
+*.pkl
+
+# Model files
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+
+# Data files (optional, uncomment if needed)
+# data/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
