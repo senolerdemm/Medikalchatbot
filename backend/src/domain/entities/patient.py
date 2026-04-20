@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Iterable
+from uuid import uuid4
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@dataclass(slots=True)
+class PatientHistoryEntry:
+    entry_type: str
+    summary: str
+    recorded_at: datetime = field(default_factory=utc_now)
+    entry_id: str = field(default_factory=lambda: str(uuid4()))
+
+
+@dataclass(slots=True)
+class PatientProfile:
+    patient_id: str
+    full_name: str | None = None
+    age: int | None = None
+    chronic_conditions: list[str] = field(default_factory=list)
+    medications: list[str] = field(default_factory=list)
+    notes: str | None = None
+    updated_at: datetime = field(default_factory=utc_now)
+
+    def summary(self) -> str:
+        parts: list[str] = []
+        if self.full_name:
+            parts.append(f"Hasta: {self.full_name}")
+        if self.age is not None:
+            parts.append(f"Yas: {self.age}")
+        if self.chronic_conditions:
+            parts.append(
+                "Kronik durumlar: " + ", ".join(self.chronic_conditions)
+            )
+        if self.medications:
+            parts.append("Ilaclar: " + ", ".join(self.medications))
+        if self.notes:
+            parts.append(f"Notlar: {self.notes}")
+        return " | ".join(parts) if parts else "Hasta profili henuz olusturulmadi."
+
+    def add_history_notes(self, notes: Iterable[str]) -> None:
+        new_notes = [note.strip() for note in notes if note and note.strip()]
+        if not new_notes:
+            return
+        suffix = "; ".join(new_notes)
+        self.notes = f"{self.notes}; {suffix}" if self.notes else suffix
+        self.updated_at = utc_now()

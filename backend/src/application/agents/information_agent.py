@@ -1,47 +1,42 @@
+from __future__ import annotations
+
+from domain.entities.health_query import HealthQuery
+from domain.ports.ai.llm_engine import LLMEngine
+from domain.ports.ai.vector_db_service import VectorDBService
+
+
 class InformationAgent:
-    """
-    Tıbbi Bilgi Ajanı (Information Agent)
-
-    Kullanıcıdan gelen genel sağlık ve hastalık sorularını (örneğin "Baş ağrısına ne iyi gelir?",
-    "Diyabetin belirtileri nelerdir?") yanıtlamaktan sorumludur.
-    RAG (Retrieval-Augmented Generation) mimarisini kullanarak:
-    - Vektör veritabanından (örneğin sağlık makaleleri, güvenilir kaynaklar) en uygun bilgileri getirir,
-    - Arama sonuçlarını ve kullanıcı sorusunu LLM motoruna besleyip uygun dilde metin üretimi sağlar.
-
-    Bağımlılıklar (Dependency Injection aracılığıyla enjekte edici katmanlar):
-    - vector_db (VectorDBService interface implementation): İçeriği getirecek servis
-    - llm_engine (LLMEngine interface implementation): Metni üretecek temel motor 
-    """
-
-    def __init__(self, vector_db, llm_engine):
+    def __init__(self, vector_db: VectorDBService, llm_engine: LLMEngine):
         self.vector_db = vector_db
         self.llm_engine = llm_engine
 
-    async def answer_medical_query(self, query: str) -> str:
-        """
-        Sorguya (query) göre veritabanından uygun bağlamı çeker ve LLM vasıtasıyla yanıtlar.
-        """
-        # 1. Bağlamı çek (Retrieval)
-        context_docs = await self.vector_db.similarity_search(query, k=3)
-        
-        # 2. Seçilen dökümanları tek bir string bağlamında birleştir
-        context_text = "\n".join([doc.page_content for doc in context_docs]) if context_docs else ""
-
-        # 3. Prompt oluştur (Prompt Engineering)
-        prompt = f"""
-        Sen "Türkçe Doğal Dil Destekli Akıllı Tıbbi Asistan"sın. Lütfen sadece sağlanan tıbbi bağlama dayanarak yanıt ver.
-        Eğer sorunun yanıtı bağlamda yoksa uydurma, "Bu konuda yeterli bilgiye sahip değilim" de.
-        
-        Bağlam:
-        {context_text}
-        
-        Kullanıcı Sorusu:
-        {query}
-        
-        Yanıt:
-        """
-
-        # 4. Yanıt Üretimi (Generation)
-        response = await self.llm_engine.generate(prompt)
-        
-        return response
+    async def answer_medical_query(
+        self,
+        query: HealthQuery,
+    ) -> dict[str, object]:
+        context_docs = await self.vector_db.similarity_search(
+            query.text,
+            k=3,
+        )
+        system_prompt = (
+            "Sen Turkce medikal bilgi asistanisin. "
+            "Sadece verilen baglama dayan, tani koyma, ilac dozu uydurma ve "
+            "gerektiginde doktora basvurma uyarisini ekle."
+        )
+        response = await self.llm_engine.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=query.text,
+            context_documents=context_docs,
+        )
+        return {
+            "message": response,
+            "sources": [
+                {
+                    "title": doc.title,
+                    "source": doc.source,
+                    "excerpt": doc.excerpt(),
+                    "score": round(doc.score, 3),
+                }
+                for doc in context_docs
+            ],
+        }

@@ -1,69 +1,69 @@
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
+from typing import Any
+
+from application.agents.appointment_agent import AppointmentAgent
+from application.agents.information_agent import InformationAgent
+from application.agents.personal_agent import PersonalAgent
+from domain.entities.health_query import HealthQuery, QueryIntent
+from domain.ports.repositories.user_history_repository import (
+    UserHistoryRepository,
+)
+
 
 class AgentOrchestrator:
-    """
-    Agent Orchestrator
-    
-    Bu sınıf, kullanıcıdan gelen doğal dil sorgularının niyetini (intent) analiz eder
-    ve isteği ilgili uzman ajana (InformationAgent, AppointmentAgent veya PersonalAgent) yönlendirir.
-    
-    Domain-Driven Design (DDD) ve Clean Architecture prensiplerine uygun olarak,
-    tüm bağımlılıklar (ajanlar ve dış servisler) kurgulama (Dependency Injection) aşamasında
-    enjekte edilmelidir.
-    """
-    
     def __init__(
         self,
-        information_agent: Any,  # İlgili interface/sınıftan türetilmiş nesneler gelmeli
-        appointment_agent: Any,
-        personal_agent: Any,
-        llm_engine: Any          # Sorgunun niyetini (intent) anlamak için LLM motoru portu
+        *,
+        information_agent: InformationAgent,
+        appointment_agent: AppointmentAgent,
+        personal_agent: PersonalAgent,
+        user_history_repository: UserHistoryRepository,
     ):
         self.information_agent = information_agent
         self.appointment_agent = appointment_agent
         self.personal_agent = personal_agent
-        self.llm_engine = llm_engine
+        self.user_history_repository = user_history_repository
 
-    async def process_query(self, query_text: str, user_id: str) -> Dict[str, Any]:
-        """
-        Kullanıcıdan gelen sorguyu ilgili ajana yönlendirip sonucu döndürür.
-        """
-        # 1. Intent Analysis (Niyet Analizi)
-        # LLM motorunu kullanarak metnin amacını belirleriz (Örn: "randevu", "bilgi", "gecmis")
-        intent = await self._analyze_intent(query_text)
-        
-        # 2. İlgili Ajanı Çağırma
-        if intent == "appointment":
-             # Randevu alma işlemini yönetecek ajana yönlendir
-            response = await self.appointment_agent.handle_appointment_request(query_text, user_id)
-            source = "Appointment Agent"
-            
-        elif intent == "personal_history":
-             # Kişisel sağlık geçmişi ve önceki kayıtlarla ilgili soruları yanıtlayacak ajan
-            response = await self.personal_agent.handle_history_query(query_text, user_id)
-            source = "Personal Agent"
-            
+    async def process_query(self, query: HealthQuery) -> dict[str, Any]:
+        intent = self._analyze_intent(query)
+        query.intent = intent
+
+        if intent is QueryIntent.APPOINTMENT:
+            agent_result = await self.appointment_agent.handle_appointment_request(query)
+            handled_by = "Appointment Agent"
+        elif intent is QueryIntent.PERSONAL_HISTORY:
+            agent_result = await self.personal_agent.handle_history_query(query)
+            handled_by = "Personal Agent"
         else:
-             # Genel tıbbi bilgi (RAG kullanarak) arayan soruları yanıtlayacak ajan
-            response = await self.information_agent.answer_medical_query(query_text)
-            source = "Information Agent"
+            agent_result = await self.information_agent.answer_medical_query(query)
+            handled_by = "Information Agent"
 
+        response_text = str(agent_result["message"])
+        await self.user_history_repository.save_interaction(
+            query.patient_id,
+            query,
+            response_text,
+        )
         return {
             "status": "success",
-            "message": response,
-            "handled_by": source,
-            "detected_intent": intent
+            "message": response_text,
+            "handled_by": handled_by,
+            "detected_intent": intent.value,
+            "risk_level": query.assess_risk().value,
+            "sources": agent_result.get("sources", []),
         }
-        
-    async def _analyze_intent(self, query_text: str) -> str:
-        """
-        Gelen metnin niyetini analiz kuralı veya LLM portu ile belirler.
-        (Şimdilik basit bir kural tabanlı mock implementasyon)
-        """
-        query_lower = query_text.lower()
-        if "randevu" in query_lower or "almak istiyorum" in query_lower or "doktor" in query_lower:
-            return "appointment"
-        elif "benim" in query_lower or "önceki" in query_lower or "tahlil" in query_lower:
-            return "personal_history"
-        else:
-            return "information"
+
+    def _analyze_intent(self, query: HealthQuery) -> QueryIntent:
+        text = query.normalized_text()
+        if any(
+            keyword in text
+            for keyword in ("randevu", "muayene", "doktor", "slot", "tarih")
+        ):
+            return QueryIntent.APPOINTMENT
+        if any(
+            keyword in text
+            for keyword in ("gecmis", "gecmiste", "tahlil", "sonuc", "benim", "kaydim")
+        ):
+            return QueryIntent.PERSONAL_HISTORY
+        return QueryIntent.INFORMATION

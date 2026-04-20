@@ -1,16 +1,59 @@
+from __future__ import annotations
+
+from application.use_cases.book_hospital_appointment import (
+    BookHospitalAppointmentUseCase,
+)
+from domain.entities.health_query import HealthQuery
+
+
 class AppointmentAgent:
-    """
-    Randevu Alma Ajanı (Appointment Agent)
-    
-    Kullanıcının doktor randevusu alma isteklerini yönetir.
-    Dış bir hastane API servisine (HospitalAPIService interface) bağlanarak
-    uygun slotları çeker ve randevu oluşturur.
-    """
-    def __init__(self, hospital_api):
-        self.hospital_api = hospital_api
-        
-    async def handle_appointment_request(self, query: str, user_id: str) -> str:
-         # Burada LLM kullanarak hangi branş ve hangi hastane istendiğini parse ederiz.
-         # Sonra dış API'den boş randevuları sorgularız.
-         slots = await self.hospital_api.get_slots()
-         return f"Randevu talebiniz anlaşıldı. Şu an {len(slots)} boş randevumuz var. Lütfen uygun bir tarih seçin."
+    def __init__(self, book_appointment: BookHospitalAppointmentUseCase):
+        self.book_appointment = book_appointment
+
+    async def handle_appointment_request(
+        self,
+        query: HealthQuery,
+    ) -> dict[str, object]:
+        specialty = self._extract_specialty(query.text)
+        outcome = await self.book_appointment.execute(
+            patient_id=query.patient_id,
+            specialty=specialty,
+        )
+        slots = outcome["suggested_slots"]
+        slot_descriptions = [slot.as_text() for slot in slots]
+        if slot_descriptions:
+            suggestion_text = " | Onerilen slotlar: " + " ; ".join(slot_descriptions)
+        else:
+            suggestion_text = ""
+        return {
+            "message": f"{outcome['message']}{suggestion_text}",
+            "sources": [],
+        }
+
+    def _extract_specialty(self, text: str) -> str:
+        normalized = text.lower().translate(
+            str.maketrans(
+                {
+                    "ç": "c",
+                    "ğ": "g",
+                    "ı": "i",
+                    "ö": "o",
+                    "ş": "s",
+                    "ü": "u",
+                }
+            )
+        )
+        keyword_map = {
+            "kardiyo": "Kardiyoloji",
+            "kalp": "Kardiyoloji",
+            "cilt": "Dermatoloji",
+            "deri": "Dermatoloji",
+            "cocuk": "Pediatri",
+            "ortopedi": "Ortopedi",
+            "psik": "Psikiyatri",
+            "noroloji": "Noroloji",
+        }
+        for keyword, specialty in keyword_map.items():
+            if keyword in normalized:
+                return specialty
+        return "Dahiliye"
