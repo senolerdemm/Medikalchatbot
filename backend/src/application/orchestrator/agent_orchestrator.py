@@ -5,10 +5,8 @@ from typing import Any
 from application.agents.appointment_agent import AppointmentAgent
 from application.agents.information_agent import InformationAgent
 from application.agents.personal_agent import PersonalAgent
+from application.services.intent_classifier import IntentClassifier
 from domain.entities.health_query import HealthQuery, QueryIntent
-from domain.ports.repositories.user_history_repository import (
-    UserHistoryRepository,
-)
 
 
 class AgentOrchestrator:
@@ -18,52 +16,34 @@ class AgentOrchestrator:
         information_agent: InformationAgent,
         appointment_agent: AppointmentAgent,
         personal_agent: PersonalAgent,
-        user_history_repository: UserHistoryRepository,
+        intent_classifier: IntentClassifier,
     ):
         self.information_agent = information_agent
         self.appointment_agent = appointment_agent
         self.personal_agent = personal_agent
-        self.user_history_repository = user_history_repository
+        self.intent_classifier = intent_classifier
 
     async def process_query(self, query: HealthQuery) -> dict[str, Any]:
-        intent = self._analyze_intent(query)
+        intent = await self.intent_classifier.classify(query)
         query.intent = intent
 
         if intent is QueryIntent.APPOINTMENT:
             agent_result = await self.appointment_agent.handle_appointment_request(query)
-            handled_by = "Appointment Agent"
+            handled_by = "Randevu Ajanı"
         elif intent is QueryIntent.PERSONAL_HISTORY:
             agent_result = await self.personal_agent.handle_history_query(query)
-            handled_by = "Personal Agent"
+            handled_by = "Kişisel Geçmiş Ajanı"
         else:
             agent_result = await self.information_agent.answer_medical_query(query)
-            handled_by = "Information Agent"
+            handled_by = "Bilgi Ajanı"
 
-        response_text = str(agent_result["message"])
-        await self.user_history_repository.save_interaction(
-            query.patient_id,
-            query,
-            response_text,
-        )
         return {
             "status": "success",
-            "message": response_text,
+            "message": str(agent_result["message"]),
             "handled_by": handled_by,
             "detected_intent": intent.value,
             "risk_level": query.assess_risk().value,
             "sources": agent_result.get("sources", []),
+            "ui_action": agent_result.get("ui_action", "none"),
+            "payload": agent_result.get("payload", {}),
         }
-
-    def _analyze_intent(self, query: HealthQuery) -> QueryIntent:
-        text = query.normalized_text()
-        if any(
-            keyword in text
-            for keyword in ("randevu", "muayene", "doktor", "slot", "tarih")
-        ):
-            return QueryIntent.APPOINTMENT
-        if any(
-            keyword in text
-            for keyword in ("gecmis", "gecmiste", "tahlil", "sonuc", "benim", "kaydim")
-        ):
-            return QueryIntent.PERSONAL_HISTORY
-        return QueryIntent.INFORMATION

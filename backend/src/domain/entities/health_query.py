@@ -55,6 +55,7 @@ class RetrievedDocument:
 class HealthQuery:
     patient_id: str
     text: str
+    conversation_id: str | None = None
     query_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: datetime = field(default_factory=utc_now)
     intent: QueryIntent | None = None

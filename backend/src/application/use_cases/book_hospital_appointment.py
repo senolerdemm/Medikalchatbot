@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from domain.entities.appointment import AppointmentBooking, AppointmentSlot
-from domain.ports.services.hospital_api_service import HospitalAPIService
+from application.services.appointment_service import AppointmentService
 
 
 class BookHospitalAppointmentUseCase:
-    def __init__(self, hospital_api: HospitalAPIService):
-        self.hospital_api = hospital_api
+    def __init__(self, appointment_service: AppointmentService):
+        self.appointment_service = appointment_service
 
     async def execute(
         self,
@@ -17,25 +16,28 @@ class BookHospitalAppointmentUseCase:
         specialty: str,
         preferred_date: date | None = None,
         hospital_name: str | None = None,
+        city: str | None = None,
     ) -> dict[str, object]:
-        slots = await self.hospital_api.get_available_slots(
+        slots = await self.appointment_service.search_slots(
             specialty=specialty,
+            city=city,
             preferred_date=preferred_date,
             hospital_name=hospital_name,
         )
         if not slots:
             return {
                 "message": (
-                    f"{specialty.title()} icin uygun randevu bulunamadi. "
-                    "Lutfen farkli tarih veya hastane deneyin."
+                    f"{specialty.title()} için uygun randevu bulunamadı. "
+                    "Lütfen farklı tarih veya hastane deneyin."
                 ),
                 "booking": None,
                 "suggested_slots": [],
             }
 
-        booking = await self.hospital_api.create_booking(
+        booking = await self.appointment_service.book_slot(
             patient_id=patient_id,
             slot_id=slots[0].slot_id,
+            city=slots[0].city,
         )
         return {
             "message": booking.confirmation_message(),

@@ -1,38 +1,76 @@
 import 'package:flutter/material.dart';
+import 'package:medical_chatbot/data/datasources/remote/fastapi_client.dart';
+import 'package:medical_chatbot/data/repositories/chat_repository_impl.dart';
 import 'package:medical_chatbot/main.dart';
-import 'chat_screen.dart';
+import 'package:medical_chatbot/presentation/blocs/chat_bloc.dart';
+import 'package:medical_chatbot/presentation/screens/chat_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
+
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _fade;
-  late Animation<Offset> _slide;
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController(text: 'senol@example.com');
+  final _passwordController = TextEditingController(text: '1234');
+  late final ChatBloc _chatBloc;
+  bool _isRegisterMode = false;
+
+  final _demoUsers = const [
+    ('senol@example.com', 'Alerji ve KBB geçmişi'),
+    ('ayse@example.com', 'Diyabet ve dahiliye geçmişi'),
+    ('mehmet@example.com', 'Kardiyoloji ve randevu geçmişi'),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
+    _chatBloc = ChatBloc(
+      repository: ChatRepositoryImpl(remoteClient: FastApiClient()),
     );
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.12),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-    _ctrl.forward();
+    _chatBloc.restoreSession().then((loggedIn) {
+      if (loggedIn && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => ChatScreen(bloc: _chatBloc)),
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final success = _isRegisterMode
+        ? await _chatBloc.register(
+            fullName: _fullNameController.text.trim(),
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          )
+        : await _chatBloc.login(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+    if (!mounted) return;
+    if (success) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(bloc: _chatBloc)),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_chatBloc.errorMessage ?? 'Giriş başarısız.')),
+    );
   }
 
   @override
@@ -46,189 +84,145 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: GestureDetector(
-              onTap: () => themeNotifier.value = isDark
-                  ? ThemeMode.light
-                  : ThemeMode.dark,
+              onTap: () => themeNotifier.value =
+                  isDark ? ThemeMode.light : ThemeMode.dark,
               child: Icon(
                 isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
                 color: scheme.primary,
-                size: 24,
               ),
             ),
           ),
         ],
       ),
-      body: FadeTransition(
-        opacity: _fade,
-        child: SlideTransition(
-          position: _slide,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Spacer(flex: 2),
-
-                // Logo
                 Container(
-                  width: 96,
-                  height: 96,
+                  width: 84,
+                  height: 84,
+                  margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.12),
+                    color: scheme.primary.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.health_and_safety_outlined,
-                    size: 52,
                     color: scheme.primary,
+                    size: 44,
                   ),
                 ),
-                const SizedBox(height: 28),
-
-                // Title
                 Text(
-                  'MedAssist AI',
-                  textAlign: TextAlign.center,
+                  appDisplayName,
                   style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
                     color: scheme.onSurface,
-                    letterSpacing: -0.5,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(
-                  'Yapay zeka destekli kişisel\nsağlık asistanınız',
-                  textAlign: TextAlign.center,
+                  appFormalName,
                   style: TextStyle(
-                    fontSize: 17,
-                    color: scheme.onSurface.withOpacity(0.5),
+                    color: scheme.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                     height: 1.5,
                   ),
                 ),
-
-                const SizedBox(height: 52),
-
-                // Feature list
-                _featureTile(
-                  context,
-                  Icons.chat_bubble_outline_rounded,
-                  'Anında Cevap',
-                  'Sağlık sorularınıza hızlı ve doğru yanıtlar',
+                const SizedBox(height: 8),
+                Text(
+                  'E-posta ve şifre ile giriş yapın. İsterseniz hızlıca yeni hesap da oluşturabilirsiniz.',
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 15,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'API adresi: ${FastApiClient.defaultBaseUrl}',
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.45),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                ..._demoUsers.map(
+                  (user) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.person_outline, color: scheme.primary),
+                    title: Text(user.$1),
+                    subtitle: Text(user.$2),
+                    onTap: () {
+                      _emailController.text = user.$1;
+                      _passwordController.text = '1234';
+                      setState(() {});
+                    },
+                  ),
                 ),
                 const SizedBox(height: 16),
-                _featureTile(
-                  context,
-                  Icons.calendar_today_outlined,
-                  'Randevu Yönetimi',
-                  'Kolayca doktor randevusu alın ve takip edin',
-                ),
-                const SizedBox(height: 16),
-                _featureTile(
-                  context,
-                  Icons.person_outline_rounded,
-                  'Kişiselleştirilmiş',
-                  'Geçmişinize göre özelleştirilmiş öneriler',
-                ),
-
-                const Spacer(flex: 2),
-
-                // CTA button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ChatScreen()),
+                if (_isRegisterMode) ...[
+                  TextField(
+                    controller: _fullNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Ad Soyad',
+                      border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'E-posta',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Şifre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                AnimatedBuilder(
+                  animation: _chatBloc,
+                  builder: (context, _) => ElevatedButton(
+                    onPressed: _chatBloc.isBusy ? null : _submit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: scheme.primary,
-                      foregroundColor: isDark
-                          ? const Color(0xFF0A0E1A)
-                          : Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
+                      foregroundColor:
+                          isDark ? const Color(0xFF0A0E1A) : Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
-                      'Başlayalım',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Text(
+                      _chatBloc.isBusy
+                          ? 'İşlem yapılıyor...'
+                          : (_isRegisterMode ? 'Kayıt Ol' : 'Giriş Yap'),
                     ),
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => setState(() => _isRegisterMode = !_isRegisterMode),
+                  child: Text(
+                    _isRegisterMode
+                        ? 'Zaten hesabım var'
+                        : 'Yeni hesap oluştur',
+                  ),
+                ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _featureTile(
-    BuildContext ctx,
-    IconData icon,
-    String title,
-    String desc,
-  ) {
-    final scheme = Theme.of(ctx).colorScheme;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141928) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: scheme.primary, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  desc,
-                  style: TextStyle(
-                    color: scheme.onSurface.withOpacity(0.5),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

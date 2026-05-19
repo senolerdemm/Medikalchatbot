@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:medical_chatbot/presentation/screens/onboarding_screen.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+const appDisplayName = 'Akıllı Tıbbi Asistan';
+const appFormalName = 'Türkçe Dil Tabanlı Akıllı Tıbbi Asistan';
+const appTagline = 'Çok ajanlı Türkçe sağlık asistanı';
 
 void main() {
   runApp(const MedicalChatbotApp());
@@ -14,9 +17,9 @@ class MedicalChatbotApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, mode, __) {
+      builder: (context, mode, child) {
         return MaterialApp(
-          title: 'MedAssist AI',
+          title: appDisplayName,
           debugShowCheckedModeBanner: false,
           themeMode: mode,
 

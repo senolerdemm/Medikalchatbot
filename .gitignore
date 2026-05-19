@@ -60,15 +60,31 @@ app.*.map.json
 # ===== Project Specific =====
 # Vector DB store (too large for git)
 chroma_store/
+backend/data/rag/chroma/
+backend/src/backend/data/rag/chroma/
+backend/data/rag/processed/*.jsonl
+backend/data/rag/processed/*.parquet
+outputs/
+**/outputs/
 *.faiss
 *.pkl
+*.parquet
 
 # Model files
+backend/model_assets/
 *.bin
 *.safetensors
 *.gguf
 *.pt
 *.pth
+
+# Local runtime databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local editor/project files
+*.code-workspace
 
 # Data files (optional, uncomment if needed)
 # data/

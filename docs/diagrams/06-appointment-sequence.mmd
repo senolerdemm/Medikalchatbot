@@ -1,0 +1,49 @@
+sequenceDiagram
+    autonumber
+    actor Kullanici as Hasta / Kullanıcı
+    participant Flutter as Flutter Appointments/Chat UI
+    participant ChatAPI as ChatController
+    participant ApptAPI as AppointmentController
+    participant Agent as Randevu Ajanı
+    participant Service as AppointmentService
+    participant Hospital as HospitalMockAPI
+    participant Repo as PostgresAppointmentRepository
+    participant DB as PostgreSQL
+    participant LLM as Llama3QLoRAClient
+
+    Kullanici->>Flutter: "Yarın saat 10 KBB randevusu ara"
+    Flutter->>ChatAPI: POST /chat
+    ChatAPI->>Agent: appointment intent route
+    Agent->>LLM: action, specialty, city, date, hour, slot seçimi JSON çıkar
+    Agent->>Service: search_slots_with_fallbacks(preferences)
+    Service->>Hospital: search_slots()
+    Hospital-->>Service: Müsait slot listesi
+    Service->>Repo: list_reserved_slot_ids()
+    Repo->>DB: confirmed appointments oku
+    Service-->>Agent: exact veya fallback slotlar
+    Agent-->>Flutter: ui_action=show_appointment_options, slot_options
+
+    Kullanici->>Flutter: "İlkini al" veya slot kartından "Bu Randevuyu Al"
+    alt Chat içinden doğal dil booking
+        Flutter->>ChatAPI: POST /chat "ilkini al"
+        ChatAPI->>Agent: Yakın konuşmadaki slot bağlamıyla booking
+        Agent->>Service: book_slot(slot_id)
+    else Randevu ekranından direkt booking
+        Flutter->>ApptAPI: POST /appointments/{slot_id}/book
+        ApptAPI->>Service: book_slot(slot_id)
+    end
+
+    Service->>Repo: list_reserved_slot_ids()
+    Service->>Hospital: book_slot(patient_id, slot_id)
+    Hospital-->>Service: AppointmentBooking confirmed
+    Service->>Repo: save_booking()
+    Repo->>DB: appointments yaz
+    Service-->>Flutter: Booking payload
+
+    Kullanici->>Flutter: Randevuyu iptal et
+    Flutter->>ApptAPI: POST /appointments/{booking_id}/cancel
+    ApptAPI->>Service: cancel_booking(patient_id, booking_id)
+    Service->>Hospital: cancel_booking(booking_id)
+    Service->>Repo: cancel_booking()
+    Repo->>DB: status=cancelled
+    Service-->>Flutter: Cancelled booking payload

@@ -1,0 +1,58 @@
+C4Component
+    title Backend Component Diyagramı - FastAPI ve Agent Katmanı
+
+    Container_Boundary(api, "AI Agent API / backend/src") {
+        Component(auth_controller, "AuthController", "FastAPI router", "POST /auth/login, POST /auth/register, POST /auth/logout, GET /auth/me.")
+        Component(chat_controller, "ChatController", "FastAPI router", "POST /chat ve GET /health endpointleri.")
+        Component(appointment_controller, "AppointmentController", "FastAPI router", "GET /appointments, POST /appointments/search, book, cancel.")
+        Component(dependencies, "Dependency Provider", "presentation/dependencies.py", "Repository, service, agent ve use-case nesnelerini bağlar.")
+
+        Component(process_query, "ProcessMedicalQueryUseCase", "Application use-case", "Conversation oluşturur, HealthQuery üretir, orchestrator sonucu sonrası mesajları kaydeder.")
+        Component(orchestrator, "AgentOrchestrator", "Application component", "Intent sonucuna göre Bilgi, Randevu veya Kişisel Geçmiş ajanına yönlendirir.")
+        Component(intent, "IntentClassifier", "Rule + LLM classifier", "information, appointment, personal_history kararını verir.")
+
+        Component(info_agent, "Bilgi Ajanı", "InformationAgent", "RAGService ile kaynak getirir, LLM ile Türkçe medikal bilgi cevabı üretir.")
+        Component(appointment_agent, "Randevu Ajanı", "AppointmentAgent", "Tercih çıkarır, slot arar, rezervasyon/iptal/listeleme payloadı döner.")
+        Component(personal_agent, "Kişisel Geçmiş Ajanı", "PersonalAgent", "Profil, klinik kayıt, randevu ve son mesajları özetler.")
+
+        Component(rag_service, "RAGService", "Application service", "Vector sonuçlarını skor/kelime örtüşmesiyle yeniden sıralar ve filtreler.")
+        Component(symptom_guidance, "SymptomGuidanceService", "Application service", "Semptomdan uzmanlık ipucu, alternatif bölüm ve kırmızı bayrak üretir.")
+        Component(appointment_service, "AppointmentService", "Application service", "Slot arama fallbackleri, rezervasyon seçimi ve cancellation mantığı.")
+        Component(auth_service, "AuthService", "Application service", "E-posta/şifre login, register, logout ve session doğrulama.")
+    }
+
+    ContainerDb(postgres, "PostgreSQL", "Operational DB", "Kullanıcı, oturum, profil, geçmiş, konuşma, mesaj ve randevu tabloları.")
+    ContainerDb(vector_store, "Vector DB", "FAISS IndexFlatIP + chunks.parquet", "Tıbbi doküman chunkları ve metadata.")
+    System_Ext(llm_runtime, "LLM Runtime", "Ollama / HF local / QLoRA", "Metin üretimi, yapılandırılmış JSON ve sohbet özeti.")
+    System_Ext(hospital_provider, "Hospital Provider", "HospitalMockAPI", "Slot arama, book_slot, cancel_booking.")
+
+    Rel(auth_controller, auth_service, "Kullanır")
+    Rel(chat_controller, process_query, "Kullanır")
+    Rel(appointment_controller, appointment_service, "Kullanır")
+    Rel(dependencies, auth_controller, "Bağlar")
+    Rel(dependencies, chat_controller, "Bağlar")
+    Rel(dependencies, appointment_controller, "Bağlar")
+
+    Rel(process_query, orchestrator, "process_query çağırır")
+    Rel(process_query, postgres, "conversation + messages kaydeder", "PostgresUserHistoryRepository")
+    Rel(orchestrator, intent, "Intent sınıflandırır")
+    Rel(orchestrator, info_agent, "information intent")
+    Rel(orchestrator, appointment_agent, "appointment intent")
+    Rel(orchestrator, personal_agent, "personal_history intent")
+
+    Rel(intent, llm_runtime, "Belirsiz intent için JSON ister")
+    Rel(intent, postgres, "Yakın konuşma bağlamı okur")
+    Rel(info_agent, rag_service, "retrieve")
+    Rel(info_agent, symptom_guidance, "Semptom/branş ipucu")
+    Rel(info_agent, llm_runtime, "Kaynaklı cevap üretir")
+    Rel(rag_service, vector_store, "similarity_search")
+
+    Rel(appointment_agent, appointment_service, "search/book/cancel/list")
+    Rel(appointment_agent, symptom_guidance, "Semptomdan branş çıkarır")
+    Rel(appointment_agent, llm_runtime, "Randevu parametresi JSON çıkarır")
+    Rel(appointment_agent, postgres, "Son mesaj ve profil okur")
+    Rel(appointment_service, hospital_provider, "Slot ve mock rezervasyon")
+    Rel(appointment_service, postgres, "Kalıcı booking kaydı")
+
+    Rel(personal_agent, postgres, "Profil, geçmiş, mesaj ve randevu okur")
+    Rel(personal_agent, llm_runtime, "Kişisel özet ve konuşma özeti üretir")

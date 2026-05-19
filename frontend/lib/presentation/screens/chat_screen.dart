@@ -1,267 +1,179 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:medical_chatbot/domain/entities/message.dart';
 import 'package:medical_chatbot/main.dart';
-import 'result_screen.dart';
-import 'appointments_screen.dart';
-
-class ChatMessage {
-  final String content;
-  final bool isUser;
-  ChatMessage({required this.content, required this.isUser});
-}
+import 'package:medical_chatbot/presentation/blocs/chat_bloc.dart';
+import 'package:medical_chatbot/presentation/screens/appointments_screen.dart';
+import 'package:medical_chatbot/presentation/screens/history_screen.dart';
+import 'package:medical_chatbot/presentation/screens/result_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  const ChatScreen({super.key, required this.bloc});
+
+  final ChatBloc bloc;
+
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  bool _isLoading = false;
+  final _controller = TextEditingController();
+  final _scrollController = ScrollController();
+  String? _lastShownBookingId;
 
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-      content: 'Merhaba! 👋 Size nasıl yardımcı olabilirim?',
-      isUser: false,
-    ),
-  ];
-
-  final List<String> _quickReplies = [
-    '🩺 Baş ağrım var',
-    '📅 Randevu al',
-    '📋 Geçmiş kayıtlarım',
-    '💊 İlaç önerisi',
-  ];
-
-  Future<void> _sendMessage(String text) async {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
-
-    setState(() {
-      _messages.add(ChatMessage(content: trimmed, isUser: true));
-      _isLoading = true;
-    });
-    _controller.clear();
-    _scrollToBottom();
-
-    // Randevu simülasyonu
-    if (trimmed.toLowerCase().contains('randevu')) {
-      await Future.delayed(const Duration(milliseconds: 1200));
-      setState(() {
-        _isLoading = false;
-        _messages.add(
-          ChatMessage(
-            content:
-                'Randevu talebinizi aldım, uygun randevuları getiriyorum...',
-            isUser: false,
-          ),
-        );
-      });
-      _scrollToBottom();
-      await Future.delayed(const Duration(milliseconds: 600));
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ResultScreen()),
-        );
-      }
-      return;
-    }
-
-    try {
-      final res = await http.post(
-        Uri.parse('http://127.0.0.1:8000/api/v1/chat'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': 'user_001', 'message': trimmed}),
-      );
-      if (res.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(res.bodyBytes));
-        setState(() {
-          _isLoading = false;
-          _messages.add(ChatMessage(content: data['message'], isUser: false));
-        });
-      } else {
-        _mockReply();
-      }
-    } catch (_) {
-      _mockReply();
-    }
-    _scrollToBottom();
+  @override
+  void initState() {
+    super.initState();
+    widget.bloc.addListener(_handleBlocUpdate);
   }
 
-  void _mockReply() {
-    setState(() {
-      _isLoading = false;
-      _messages.add(
-        ChatMessage(
-          content:
-              'Sorunuzu aldım. Yapay zeka modelim bağlandığında burada yanıt verecek.',
-          isUser: false,
-        ),
-      );
-    });
+  @override
+  void dispose() {
+    widget.bloc.removeListener(_handleBlocUpdate);
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 120), () {
+  void _handleBlocUpdate() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
       }
     });
+    if (!mounted || widget.bloc.messages.isEmpty) return;
+    final last = widget.bloc.messages.last;
+    if (!last.isUser &&
+        last.uiAction == 'show_appointment_options' &&
+        (last.payload['booked'] == true)) {
+      final booking = Map<String, dynamic>.from(
+        last.payload['booking'] as Map? ?? {},
+      );
+      final bookingId = booking['booking_id']?.toString();
+      if (bookingId == null || bookingId.isEmpty || bookingId == _lastShownBookingId) {
+        return;
+      }
+      _lastShownBookingId = bookingId;
+      final slot = Map<String, dynamic>.from(booking['slot'] as Map? ?? {});
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            bookingPayload: {
+              'booking_id': bookingId,
+              'status': booking['status'] ?? 'confirmed',
+              'slot': slot,
+            },
+          ),
+        ),
+      );
+    }
   }
 
-  Widget _buildBubble(BuildContext ctx, ChatMessage msg) {
-    final scheme = Theme.of(ctx).colorScheme;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    _controller.clear();
+    await widget.bloc.sendMessage(text);
+  }
 
-    if (msg.isUser) {
+  void _openHistoryScreen({
+    required String summaryMessage,
+    required Map<String, dynamic> payload,
+  }) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HistoryScreen(
+          summaryMessage: summaryMessage,
+          payload: payload,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessageEntity message) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (message.isUser) {
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
-          margin: const EdgeInsets.only(bottom: 12, left: 60),
+          margin: const EdgeInsets.only(left: 64, bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: scheme.primary,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(4),
-              bottomLeft: Radius.circular(20),
-              bottomRight: Radius.circular(20),
-            ),
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
-            msg.content,
+            message.content,
             style: TextStyle(
               color: isDark ? const Color(0xFF0A0E1A) : Colors.white,
-              fontSize: 15,
-              height: 1.45,
             ),
           ),
         ),
       );
     }
 
-    // Bot bubble — taşma kesin olarak düzeltildi
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.only(right: 48),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141928) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.health_and_safety_outlined,
-              size: 18,
-              color: scheme.primary,
-            ),
-          ),
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          if (message.handledBy.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A2035) : Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                boxShadow: isDark
-                    ? []
-                    : [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                color: scheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                msg.content,
+                message.handledBy,
                 style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 15,
-                  height: 1.45,
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
                 ),
               ),
             ),
+          Text(
+            message.content,
+            style: TextStyle(color: scheme.onSurface, height: 1.45),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTypingIndicator(BuildContext ctx) {
-    final scheme = Theme.of(ctx).colorScheme;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: scheme.primary.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.health_and_safety_outlined,
-                size: 18,
-                color: scheme.primary,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A2035) : Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: isDark
-                    ? []
-                    : [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 6,
-                        ),
-                      ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(
-                  3,
-                  (i) => Container(
-                    margin: EdgeInsets.only(right: i < 2 ? 4 : 0),
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
+          if (message.uiAction == 'show_appointment_options') ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AppointmentsScreen(bloc: widget.bloc),
                 ),
               ),
+              icon: const Icon(Icons.calendar_today_outlined),
+              label: const Text('Randevuları Gör'),
             ),
           ],
-        ),
+          if (message.uiAction == 'show_history_summary') ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _openHistoryScreen(
+                summaryMessage: message.content,
+                payload: message.payload,
+              ),
+              icon: const Icon(Icons.history_edu_outlined),
+              label: const Text('Geçmiş Özetini Gör'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -271,215 +183,101 @@ class _ChatScreenState extends State<ChatScreen> {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: scheme.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
+    return AnimatedBuilder(
+      animation: widget.bloc,
+      builder: (context, _) => Scaffold(
+        appBar: AppBar(
+          title: const Text(appDisplayName),
+          actions: [
+            IconButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AppointmentsScreen(bloc: widget.bloc),
+                ),
               ),
-              child: Icon(
-                Icons.health_and_safety_outlined,
-                color: scheme.primary,
-                size: 20,
-              ),
+              icon: const Icon(Icons.calendar_month_outlined),
             ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'MedAssist AI',
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
+            IconButton(
+              onPressed: widget.bloc.latestHistoryPayload == null
+                  ? null
+                  : () => _openHistoryScreen(
+                      summaryMessage:
+                          widget.bloc.latestHistoryMessage ?? 'Geçmiş özeti',
+                      payload: widget.bloc.latestHistoryPayload!,
+                    ),
+              icon: const Icon(Icons.history_outlined),
+            ),
+            IconButton(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                await widget.bloc.logout();
+                if (!mounted) return;
+                navigator.pop();
+              },
+              icon: const Icon(Icons.logout),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => themeNotifier.value =
+                    isDark ? ThemeMode.light : ThemeMode.dark,
+                child: Icon(
+                  isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                  color: scheme.primary,
                 ),
-                Text(
-                  'Çevrimiçi',
-                  style: TextStyle(color: scheme.primary, fontSize: 11),
-                ),
-              ],
+              ),
             ),
           ],
         ),
-        actions: [
-          // Randevularım butonu
-          GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AppointmentsScreen()),
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              margin: const EdgeInsets.only(right: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6C63FF).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: widget.bloc.messages.length,
+                itemBuilder: (context, index) =>
+                    _buildMessageBubble(widget.bloc.messages[index]),
               ),
+            ),
+            if (widget.bloc.isBusy)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            if (widget.bloc.errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Text(
+                  widget.bloc.errorMessage!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.calendar_today_outlined,
-                    size: 14,
-                    color: Color(0xFF6C63FF),
-                  ),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'Randevularım',
-                    style: TextStyle(
-                      color: Color(0xFF6C63FF),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        hintText: 'Sağlık sorusu veya randevu talebi yazın...',
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    onPressed: widget.bloc.isBusy ? null : _sendMessage,
+                    child: const Icon(Icons.send),
                   ),
                 ],
               ),
             ),
-          ),
-          // Tema toggle
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: GestureDetector(
-              onTap: () => themeNotifier.value = isDark
-                  ? ThemeMode.light
-                  : ThemeMode.dark,
-              child: Icon(
-                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                color: scheme.primary,
-                size: 22,
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Messages
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              itemCount: _messages.length + (_isLoading ? 1 : 0),
-              itemBuilder: (ctx, i) {
-                if (i == _messages.length) return _buildTypingIndicator(ctx);
-                return _buildBubble(ctx, _messages[i]);
-              },
-            ),
-          ),
-
-          // Quick replies
-          SizedBox(
-            height: 48,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _quickReplies.length,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              itemBuilder: (ctx, i) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => _sendMessage(_quickReplies[i]),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1A2035) : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: scheme.primary.withOpacity(0.3),
-                      ),
-                      boxShadow: isDark
-                          ? []
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 4,
-                              ),
-                            ],
-                    ),
-                    child: Text(
-                      _quickReplies[i],
-                      style: TextStyle(
-                        color: scheme.primary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Input bar
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0D1120) : Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF1A2035)
-                          : const Color(0xFFF2F4F7),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: TextField(
-                      controller: _controller,
-                      style: TextStyle(color: scheme.onSurface, fontSize: 15),
-                      decoration: InputDecoration(
-                        hintText: 'Mesajınızı yazın...',
-                        hintStyle: TextStyle(
-                          color: scheme.onSurface.withOpacity(0.38),
-                          fontSize: 15,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                      ),
-                      onSubmitted: _sendMessage,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => _sendMessage(_controller.text),
-                  child: Container(
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.send_rounded,
-                      color: isDark ? const Color(0xFF0A0E1A) : Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

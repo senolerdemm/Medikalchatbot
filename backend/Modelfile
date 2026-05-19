@@ -1,0 +1,3 @@
+FROM llama3:latest
+ADAPTER ./model_assets/qlora
+PARAMETER temperature 0.2

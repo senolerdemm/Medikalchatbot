@@ -1,0 +1,32 @@
+C4Deployment
+    title Deployment Diyagramı - Demo ve Sunum Ortamı
+
+    Deployment_Node(mobile_device, "Kullanıcı Cihazı / Simulator", "iOS, Android veya Flutter simulator") {
+        Container(flutter_app, "Flutter Mobile App", "Dart", "API_BASE_URL ile FastAPI backend'e bağlanır.")
+    }
+
+    Deployment_Node(dev_machine, "Demo Makinesi", "macOS / Linux") {
+        Container(fastapi_app, "FastAPI Backend", "Python + Uvicorn", "backend/src/main.py")
+
+        Deployment_Node(docker, "Docker Compose", "Docker Desktop") {
+            ContainerDb(postgres, "PostgreSQL", "postgres:16", "medical_chatbot veritabanı")
+        }
+
+        Deployment_Node(local_files, "Local Model ve RAG Dosyaları", "Filesystem") {
+            ContainerDb(chroma, "Chroma Fallback Cache", "SQLite-backed fallback store", "backend/data/rag/chroma")
+            ContainerDb(rag_outputs, "Rapor RAG Outputs", "FAISS IndexFlatIP + chunks.parquet", "outputs altındaki rapor RAG artefactleri")
+            Container(model_assets, "Model Assets", "HF model / PEFT adapter", "Meta-Llama-3-8B-Instruct, qlora adapter, merged model")
+        }
+
+        Container(ollama, "Ollama veya HF Local Runtime", "LLM inference", "Llama 3 / fine-tuned QLoRA model yanıt üretir.")
+    }
+
+    System_Ext(lab_pc, "Opsiyonel Okul Lab PC", "GPU inference server", "Aynı LLMEngine portuna uyacak şekilde HTTP LLM provider olarak bağlanabilir.")
+
+    Rel(flutter_app, fastapi_app, "HTTP/JSON", "127.0.0.1 veya LAN URL")
+    Rel(fastapi_app, postgres, "SQL", "DATABASE_URL")
+    Rel(fastapi_app, rag_outputs, "Primary FAISS retrieval", "EXTERNAL_RAG_*")
+    Rel(fastapi_app, chroma, "Fallback/cache retrieval", "CHROMA_PATH")
+    Rel(fastapi_app, ollama, "Prompt", "LLM_BASE_URL")
+    Rel(model_assets, ollama, "Model ağırlığı sağlar")
+    Rel(fastapi_app, lab_pc, "Alternatif uzak LLM çağrısı", "HTTP, aynı LLMEngine adapter mantığı")

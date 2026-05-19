@@ -1,0 +1,4 @@
+FROM /Users/senolerdem/Desktop/MedicalChatbot/backend/model_assets/Meta-Llama-3-8B-Instruct
+ADAPTER /Users/senolerdem/Desktop/MedicalChatbot/backend/model_assets/qlora/adapter_model.safetensors
+PARAMETER temperature 0.2
+PARAMETER num_ctx 4096

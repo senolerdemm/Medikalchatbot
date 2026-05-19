@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--embedding-model",
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
     )
     parser.add_argument(
         "--reset",

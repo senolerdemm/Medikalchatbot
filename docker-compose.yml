@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: medical_chatbot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medical_chatbot
+      POSTGRES_USER: medical_user
+      POSTGRES_PASSWORD: medical_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

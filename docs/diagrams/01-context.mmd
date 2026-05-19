@@ -1,0 +1,24 @@
+C4Context
+    title Türkçe Dil Tabanlı Akıllı Tıbbi Asistan - Sistem Bağlamı
+
+    Person(patient, "Hasta / Kullanıcı", "Mobil uygulama üzerinden sağlık sorusu sorar, geçmişini görüntüler ve randevu işlemleri yapar.")
+    System(mobile_app, "Mobil Uygulama", "Flutter istemci. Chat, geçmiş özeti ve randevu ekranlarını sunar.")
+    System(ai_api, "AI Agent API", "FastAPI backend. Auth, chat orchestration, agent routing, RAG ve randevu işlemlerini yürütür.")
+
+    SystemDb(postgres, "PostgreSQL", "Kullanıcı, oturum, konuşma, mesaj, hasta geçmişi ve randevu kayıtları.")
+    SystemDb(vector_store, "Vector DB / RAG Store", "Chroma, FAISS veya harici parquet chunk dosyaları. Tıbbi bilgi getirme katmanı.")
+    System_Ext(llm_runtime, "LLM Runtime", "Ollama veya HF local adapter. Llama 3 / QLoRA fine-tuned model cevap, intent ve özet üretir.")
+    System_Ext(hospital_provider, "Hospital Provider", "Şu an gerçekçi mock servis. Slot arama, rezervasyon, iptal ve listeleme portunu temsil eder.")
+    System_Ext(model_assets, "Model ve RAG Artefactleri", "Base Llama 3, QLoRA adapter, merged model ve rapordaki RAG çıktı dosyaları.")
+
+    Rel(patient, mobile_app, "Kullanır", "UI")
+    Rel(mobile_app, ai_api, "API çağrısı yapar", "HTTP/JSON, Bearer session token")
+    Rel(ai_api, postgres, "Operasyonel veriyi okur/yazar", "SQLAlchemy")
+    Rel(ai_api, vector_store, "Benzer tıbbi bağlam arar", "embedding + similarity search")
+    Rel(ai_api, llm_runtime, "Prompt gönderir, metin/JSON yanıt alır", "Ollama API veya local Transformers")
+    Rel(ai_api, hospital_provider, "Slot arar, randevu alır/iptal eder", "HospitalAPIService portu")
+    Rel(model_assets, llm_runtime, "Model ağırlığı ve adapter sağlar", "local filesystem")
+    Rel(model_assets, vector_store, "RAG index/chunk verisi sağlar", "local filesystem")
+
+    UpdateRelStyle(patient, mobile_app, $textColor="green", $lineColor="green")
+    UpdateRelStyle(mobile_app, ai_api, $textColor="green", $lineColor="green")

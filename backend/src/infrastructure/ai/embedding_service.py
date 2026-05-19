@@ -6,7 +6,15 @@ from functools import lru_cache
 from pathlib import Path
 
 
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+KNOWN_EMBEDDING_DIMENSIONS = {
+    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2": 768,
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": 384,
+}
 
 
 class EmbeddingService:
@@ -43,6 +51,16 @@ class EmbeddingService:
         )
         return [[float(value) for value in vector.tolist()] for vector in vectors]
 
+    def dimension_hint(self) -> int | None:
+        if self.model_name in KNOWN_EMBEDDING_DIMENSIONS:
+            return KNOWN_EMBEDDING_DIMENSIONS[self.model_name]
+        if Path(self.model_name).exists():
+            return None
+        return None
+
+    def has_real_model(self) -> bool:
+        return self._get_model() is not None
+
     def _fallback_embed(self, text: str) -> list[float]:
         digest = hashlib.sha256(text.encode("utf-8")).digest()
         return [
@@ -70,13 +88,8 @@ class EmbeddingService:
         if Path(self.model_name).exists():
             return Path(self.model_name)
 
-        cache_root = (
-            Path.home()
-            / ".cache"
-            / "huggingface"
-            / "hub"
-            / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
-        )
+        model_cache_name = f"models--{self.model_name.replace('/', '--')}"
+        cache_root = Path.home() / ".cache" / "huggingface" / "hub" / model_cache_name
         ref_file = cache_root / "refs" / "main"
         snapshots_dir = cache_root / "snapshots"
         if ref_file.exists():

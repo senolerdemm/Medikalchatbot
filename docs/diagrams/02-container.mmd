@@ -1,0 +1,28 @@
+C4Container
+    title Türkçe Dil Tabanlı Akıllı Tıbbi Asistan - Container Diyagramı
+
+    Person(patient, "Hasta / Kullanıcı", "Chat ve randevu akışlarını başlatır.")
+
+    System_Boundary(system, "Türkçe Dil Tabanlı Akıllı Tıbbi Asistan") {
+        Container(flutter_ui, "Flutter Mobile App", "Dart / Flutter", "Onboarding, login, chat, geçmiş özeti, randevu merkezi ve sonuç ekranları.")
+        Container(fastapi, "AI Agent API", "Python / FastAPI", "HTTP endpointleri, dependency wiring, use-case orchestration ve agent response sözleşmesi.")
+        Container(app_layer, "Application Layer", "Python", "ProcessMedicalQueryUseCase, AgentOrchestrator, IntentClassifier ve üç agent.")
+        Container(domain_layer, "Domain Layer", "Python dataclass + port interfaces", "HealthQuery, PatientProfile, AppointmentSlot, repository/service portları.")
+        Container(infra_layer, "Infrastructure Layer", "Python adapters", "PostgreSQL repository, FAISS birincil vector adapter, Llama3 client ve HospitalMockAPI.")
+        ContainerDb(postgres, "PostgreSQL", "postgres:16", "users, user_sessions, patient_profiles, patient_history_entries, conversations, messages, appointments.")
+        ContainerDb(vector_store, "Vector Store", "FAISS IndexFlatIP + chunks.parquet", "Tıbbi makale chunkları, metadata ve 768 boyutlu mpnet embedding indexi.")
+        Container(llm_runtime, "LLM Runtime", "Ollama / Transformers / PEFT", "Llama 3 veya QLoRA adapterlı modelle metin ve JSON üretimi.")
+        Container(hospital_mock, "Hospital Mock Provider", "Python in-memory adapter", "Çok şehirli, çok branşlı slot havuzu ve mock booking state.")
+    }
+
+    Rel(patient, flutter_ui, "Kullanır")
+    Rel(flutter_ui, fastapi, "Auth, chat ve appointment çağrıları", "HTTP/JSON")
+    Rel(fastapi, app_layer, "Use-case çağırır", "Python DI")
+    Rel(app_layer, domain_layer, "Entity ve port kullanır")
+    Rel(app_layer, infra_layer, "Port implementasyonlarını kullanır")
+    Rel(infra_layer, postgres, "Okur/yazar", "SQLAlchemy")
+    Rel(infra_layer, vector_store, "Benzerlik araması yapar", "FAISS IndexFlatIP")
+    Rel(infra_layer, llm_runtime, "Prompt gönderir", "Ollama API veya local model")
+    Rel(infra_layer, hospital_mock, "Slot/booking işlemleri", "HospitalAPIService")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

@@ -1,0 +1,72 @@
+erDiagram
+    users ||--o| patient_profiles : has
+    users ||--o{ user_sessions : opens
+    users ||--o{ patient_history_entries : owns
+    users ||--o{ conversations : starts
+    users ||--o{ appointments : books
+    conversations ||--o{ messages : contains
+
+    users {
+        string id PK
+        string username UK
+        string password_hash
+        string full_name
+        datetime created_at
+    }
+
+    patient_profiles {
+        string user_id PK, FK
+        int age
+        json chronic_conditions
+        json medications
+        text notes
+        string city
+        datetime updated_at
+    }
+
+    patient_history_entries {
+        string id PK
+        string user_id FK
+        string entry_type
+        text summary
+        json metadata_json
+        datetime recorded_at
+    }
+
+    conversations {
+        string id PK
+        string user_id FK
+        string title
+        datetime created_at
+    }
+
+    messages {
+        string id PK
+        string conversation_id FK
+        string role
+        text content
+        datetime created_at
+    }
+
+    appointments {
+        string id PK
+        string user_id FK
+        string external_booking_id UK
+        string slot_id
+        string hospital_name
+        string city
+        string physician_name
+        string specialty
+        datetime start_at
+        string status
+        datetime created_at
+    }
+
+    user_sessions {
+        string id PK
+        string user_id FK
+        string token_hash UK
+        datetime created_at
+        datetime expires_at
+        datetime revoked_at
+    }

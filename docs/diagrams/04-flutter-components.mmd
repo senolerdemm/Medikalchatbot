@@ -1,0 +1,32 @@
+C4Component
+    title Flutter Component Diyagramı - UI, State ve API
+
+    Person(patient, "Hasta / Kullanıcı", "Mobil uygulama ile etkileşir.")
+    System_Ext(api, "AI Agent API", "FastAPI backend")
+
+    Container_Boundary(flutter, "Flutter Mobile App / frontend/lib") {
+        Component(onboarding, "OnboardingScreen", "Flutter screen", "Oturum açma/kayıt ve başlangıç yönlendirmesi.")
+        Component(chat_screen, "ChatScreen", "Flutter screen", "Mesajlaşma, kaynak gösterimi, handled_by etiketi, randevu/geçmiş aksiyon butonları.")
+        Component(appointments_screen, "AppointmentsScreen", "Flutter screen", "Aktif randevular, iptal kayıtları ve önerilen slotları gösterir.")
+        Component(history_screen, "HistoryScreen", "Flutter screen", "Personal Agent payloadını profil, kayıt, sohbet hafızası ve randevu bölümleriyle render eder.")
+        Component(result_screen, "ResultScreen", "Flutter screen", "Oluşturulan randevu sonucunu gösterir.")
+
+        Component(chat_bloc, "ChatBloc", "ChangeNotifier state", "Session, conversation_id, messages, suggestedSlots, appointments ve history payload state'i.")
+        Component(repository, "ChatRepositoryImpl", "Repository adapter", "SharedPreferences session saklama ve FastApiClient çağrılarını domain entity'lerine mapleme.")
+        Component(fastapi_client, "FastApiClient", "HTTP client", "login/register/me/chat/appointments/book/cancel endpointlerini çağırır.")
+        Component(models, "MessageModel + Entities", "Dart models", "ChatResponse, source docs, appointment booking ve slot verisini UI modeline taşır.")
+    }
+
+    Rel(patient, onboarding, "Giriş/kayıt yapar")
+    Rel(patient, chat_screen, "Mesaj gönderir")
+    Rel(patient, appointments_screen, "Randevu görür/alır/iptal eder")
+    Rel(patient, history_screen, "Geçmiş özetini inceler")
+
+    Rel(onboarding, chat_bloc, "login/register/restore")
+    Rel(chat_screen, chat_bloc, "sendMessage ve uiAction tüketimi")
+    Rel(appointments_screen, chat_bloc, "refreshAppointments, bookSuggestedSlot, cancelBooking")
+    Rel(history_screen, chat_bloc, "latestHistoryPayload görüntüler")
+    Rel(chat_bloc, repository, "Domain repository çağırır")
+    Rel(repository, fastapi_client, "HTTP işlemleri")
+    Rel(repository, models, "API JSON -> entity mapleme")
+    Rel(fastapi_client, api, "HTTP/JSON", "Bearer token")

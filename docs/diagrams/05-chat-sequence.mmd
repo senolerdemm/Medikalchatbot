@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor Kullanici as Hasta / Kullanıcı
+    participant Flutter as Flutter ChatScreen + ChatBloc
+    participant API as ChatController POST /api/v1/chat
+    participant Auth as get_current_user + AuthService
+    participant UseCase as ProcessMedicalQueryUseCase
+    participant HistoryRepo as PostgresUserHistoryRepository
+    participant Orchestrator as AgentOrchestrator
+    participant Intent as IntentClassifier
+    participant Info as Bilgi Ajanı
+    participant Appointment as Randevu Ajanı
+    participant Personal as Kişisel Geçmiş Ajanı
+    participant DB as PostgreSQL
+    participant RAG as RAGService + Vector DB
+    participant LLM as Llama3QLoRAClient
+
+    Kullanici->>Flutter: Mesaj yazar
+    Flutter->>API: POST /chat {message, conversation_id}
+    API->>Auth: Bearer token doğrula
+    Auth->>DB: user_sessions + users oku
+    Auth-->>API: current_user
+    API->>UseCase: execute(user_id, message, conversation_id)
+    UseCase->>HistoryRepo: ensure_conversation()
+    HistoryRepo->>DB: conversations oku/yaz
+    UseCase->>Orchestrator: process_query(HealthQuery)
+    Orchestrator->>Intent: classify(query)
+    Intent->>DB: Gerekirse son mesajları oku
+    Intent->>LLM: Belirsiz durumda intent JSON iste
+    LLM-->>Intent: {intent, reason, confidence}
+
+    alt information
+        Orchestrator->>Info: answer_medical_query()
+        Info->>RAG: retrieve(query, k=3)
+        RAG->>RAG: FAISS IndexFlatIP ile top-k ara; gerekirse fallback skorla
+        Info->>LLM: Kaynak ve semptom ipucuyla cevap üret
+        LLM-->>Info: Türkçe bilgi cevabı
+        Info-->>Orchestrator: message + sources + payload
+    else appointment
+        Orchestrator->>Appointment: handle_appointment_request()
+        Appointment->>DB: Profil ve son konuşma bağlamı oku
+        Appointment->>LLM: Randevu parametrelerini JSON çıkar
+        Appointment-->>Orchestrator: slot/booking payloadı
+    else personal_history
+        Orchestrator->>Personal: handle_history_query()
+        Personal->>DB: Profil, history_entries, messages, appointments oku
+        Personal->>LLM: Yakın konuşma ve kayıt özeti üret
+        Personal-->>Orchestrator: history summary payloadı
+    end
+
+    Orchestrator-->>UseCase: Standart ChatResponse alanları
+    UseCase->>HistoryRepo: save_interaction(user + assistant)
+    HistoryRepo->>DB: messages + interaction history yaz
+    API-->>Flutter: ChatResponse
+    Flutter->>Flutter: ui_action'a göre kaynak/randevu/geçmiş göster
